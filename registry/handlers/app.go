@@ -36,11 +36,14 @@ import (
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	storagemiddleware "github.com/docker/distribution/registry/storage/driver/middleware"
 	"github.com/docker/distribution/version"
-	"github.com/docker/go-metrics"
+	metrics "github.com/docker/go-metrics"
 	"github.com/docker/libtrust"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	"go.opencensus.io/plugin/ochttp"
+	"go.opencensus.io/plugin/ochttp/propagation/b3"
+	"go.opencensus.io/zpages"
 )
 
 // randomSecretSize is the number of random bytes to generate if no secret
@@ -92,6 +95,7 @@ type App struct {
 // requests. The app only implements ServeHTTP and can be wrapped in other
 // handlers accordingly.
 func NewApp(ctx context.Context, config *configuration.Configuration) *App {
+
 	app := &App{
 		Config:  config,
 		Context: ctx,
@@ -619,6 +623,7 @@ func (app *App) configureSecret(configuration *configuration.Configuration) {
 }
 
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	defer r.Body.Close() // ensure that request body is always closed.
 
 	// Prepare the context with our own little decorations.
@@ -637,7 +642,14 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Set a header with the Docker Distribution API Version for all responses.
 	w.Header().Add("Docker-Distribution-API-Version", "registry/2.0")
-	app.router.ServeHTTP(w, r)
+	mux := http.NewServeMux()
+	mux.Handle("/", ochttp.WithRouteTag(app.router, "/"))
+	zpages.Handle(mux, "/debug")
+	handler := &ochttp.Handler{
+		Handler:     mux,
+		Propagation: &b3.HTTPFormat{},
+	}
+	handler.ServeHTTP(w, r)
 }
 
 // dispatchFunc takes a context and request and returns a constructed handler
