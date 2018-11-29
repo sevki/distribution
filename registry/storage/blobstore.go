@@ -7,7 +7,8 @@ import (
 	"github.com/docker/distribution"
 	dcontext "github.com/docker/distribution/context"
 	"github.com/docker/distribution/registry/storage/driver"
-	"github.com/opencontainers/go-digest"
+	digest "github.com/opencontainers/go-digest"
+	"go.opencensus.io/trace"
 )
 
 // blobStore implements the read side of the blob store interface over a
@@ -23,6 +24,9 @@ var _ distribution.BlobProvider = &blobStore{}
 
 // Get implements the BlobReadService.Get call.
 func (bs *blobStore) Get(ctx context.Context, dgst digest.Digest) ([]byte, error) {
+	ctx, span := trace.StartSpan(ctx, "blogstore.Get")
+	defer span.End()
+
 	bp, err := bs.path(dgst)
 	if err != nil {
 		return nil, err
@@ -42,6 +46,9 @@ func (bs *blobStore) Get(ctx context.Context, dgst digest.Digest) ([]byte, error
 }
 
 func (bs *blobStore) Open(ctx context.Context, dgst digest.Digest) (distribution.ReadSeekCloser, error) {
+	ctx, span := trace.StartSpan(ctx, "blogstore.Open")
+	defer span.End()
+
 	desc, err := bs.statter.Stat(ctx, dgst)
 	if err != nil {
 		return nil, err
@@ -59,6 +66,9 @@ func (bs *blobStore) Open(ctx context.Context, dgst digest.Digest) (distribution
 // content is already present, only the digest will be returned. This should
 // only be used for small objects, such as manifests. This implemented as a convenience for other Put implementations
 func (bs *blobStore) Put(ctx context.Context, mediaType string, p []byte) (distribution.Descriptor, error) {
+	ctx, span := trace.StartSpan(ctx, "blogstore.Put")
+	defer span.End()
+
 	dgst := digest.FromBytes(p)
 	desc, err := bs.statter.Stat(ctx, dgst)
 	if err == nil {
@@ -88,6 +98,8 @@ func (bs *blobStore) Put(ctx context.Context, mediaType string, p []byte) (distr
 }
 
 func (bs *blobStore) Enumerate(ctx context.Context, ingester func(dgst digest.Digest) error) error {
+	ctx, span := trace.StartSpan(ctx, "blogstore.Enumerate")
+	defer span.End()
 	specPath, err := pathFor(blobsPathSpec{})
 	if err != nil {
 		return err
@@ -172,6 +184,9 @@ var _ distribution.BlobDescriptorService = &blobStatter{}
 // in the main blob store. If this method returns successfully, there is
 // strong guarantee that the blob exists and is available.
 func (bs *blobStatter) Stat(ctx context.Context, dgst digest.Digest) (distribution.Descriptor, error) {
+	ctx, span := trace.StartSpan(ctx, "blogstore.Stat")
+	defer span.End()
+
 	path, err := pathFor(blobDataPathSpec{
 		digest: dgst,
 	})
